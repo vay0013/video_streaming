@@ -25,33 +25,31 @@ public class VideoStreamingController {
     @Value("${streaming.chunk.default-size}")
     private long chunkDefaultSize;
 
+    @GetMapping("/list")
+    public List<FileMetadata> getVideoList() {
+        return videoStreamingService.getVideoList();
+    }
+
     @GetMapping("/{uuid}")
     public ResponseEntity<byte[]> fetchChunk(
             @RequestHeader(value = RANGE, required = false) String range,
-            @PathVariable UUID uuid
-    ) {
-
+            @PathVariable UUID uuid) {
         StreamRange parsedRange = StreamRange.parseHttpRangeString(range, chunkDefaultSize);
         StreamChunk streamChunk = videoStreamingService.fetchChunk(uuid, parsedRange);
-
-        return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
+        return ResponseEntity
+                .status(HttpStatus.PARTIAL_CONTENT)
                 .header(CONTENT_TYPE, streamChunk.fileMetadata().getContentType())
                 .header(ACCEPT_RANGES, "bytes")
                 .header(CONTENT_LENGTH, getContentLengthHeader(parsedRange, streamChunk.fileMetadata().getContentSize()))
                 .header(CONTENT_RANGE, getContentRangeHeader(parsedRange, streamChunk.fileMetadata().getContentSize()))
                 .body(streamChunk.chunk());
-    }
 
-    @GetMapping("/list")
-    public ResponseEntity<List<FileMetadata>> getVideoList() {
-        return ResponseEntity.ok(videoStreamingService.getVideoList());
     }
 
     @PostMapping("/upload")
     public ResponseEntity<UUID> saveVideo(
-            @RequestParam("video") MultipartFile video,
-            @RequestParam("videoName") String videoName
-    ) {
+            @RequestParam("video_name") String videoName,
+            @RequestParam("video") MultipartFile video) {
         return ResponseEntity.ok(videoStreamingService.saveVideo(video, videoName));
     }
 
