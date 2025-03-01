@@ -10,4 +10,6 @@ public interface FileMetadataRepository extends JpaRepository<FileMetadata, Long
     FileMetadata findFileMetadataByUuid(UUID uuid);
 
     void deleteByUuid(UUID uuid);
+
+    boolean existsByUuid(UUID uuid);
 }

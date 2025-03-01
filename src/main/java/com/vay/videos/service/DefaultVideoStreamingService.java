@@ -1,5 +1,6 @@
 package com.vay.videos.service;
 
+import com.vay.videos.exception.VideoNotFoundException;
 import com.vay.videos.intagrations.s3.MinioService;
 import com.vay.videos.model.FileMetadata;
 import com.vay.videos.model.StreamChunk;
@@ -7,6 +8,7 @@ import com.vay.videos.model.StreamRange;
 import com.vay.videos.repository.FileMetadataRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -16,6 +18,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class DefaultVideoStreamingService implements VideoStreamingService {
 
@@ -30,6 +33,10 @@ public class DefaultVideoStreamingService implements VideoStreamingService {
     @Override
     @Transactional
     public UUID saveVideo(MultipartFile video, String videoName) {
+        if (video == null || video.isEmpty()) {
+            throw new VideoNotFoundException("MultipartFile is empty when saving video");
+        }
+
         UUID uuid = UUID.randomUUID();
         FileMetadata metadata = new FileMetadata(
                 null,
@@ -41,13 +48,18 @@ public class DefaultVideoStreamingService implements VideoStreamingService {
 
         fileMetadataRepository.save(metadata);
         minioService.uploadFile(video, metadata);
+        log.info("Save video with UUID : {}", uuid);
         return uuid;
     }
 
     @Override
     @Transactional
     public void deleteVideo(UUID videoUUID) {
+        if (fileMetadataRepository.existsByUuid(videoUUID)) {
+            throw new VideoNotFoundException("Video with UUID: %s not found when deleting video".formatted(videoUUID));
+        }
         fileMetadataRepository.deleteByUuid(videoUUID);
+        log.info("Delete video with UUID : {}", videoUUID);
     }
 
     @Override

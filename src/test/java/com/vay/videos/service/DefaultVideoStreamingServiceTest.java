@@ -1,10 +1,9 @@
 package com.vay.videos.service;
 
-import com.google.common.net.MediaType;
+import com.vay.videos.exception.VideoNotFoundException;
 import com.vay.videos.intagrations.s3.MinioService;
 import com.vay.videos.model.FileMetadata;
 import com.vay.videos.repository.FileMetadataRepository;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -16,7 +15,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -24,74 +25,96 @@ import static org.mockito.Mockito.*;
 class DefaultVideoStreamingServiceTest {
 
     @Mock
-    private FileMetadataRepository fileMetadataRepository;
+    FileMetadataRepository fileMetadataRepository;
 
     @Mock
-    private MinioService minioService;
+    MinioService minioService;
 
     @InjectMocks
-    private DefaultVideoStreamingService videoService;
+    DefaultVideoStreamingService videoService;
 
     @Mock
-    private MultipartFile videoFile;
-
-    private FileMetadata fileMetadata;
-
-    private UUID videoUUID;
-
-    @BeforeEach
-    void setUp() {
-        videoUUID = UUID.randomUUID();
-        fileMetadata = new FileMetadata(
-                null,
-                "test-video.mp4",
-                videoUUID, MediaType.ANY_VIDEO_TYPE.type(),
-                1024L,
-                LocalDateTime.now());
-    }
+    MultipartFile video;
+    
+    String videoName = "test-video.mp4"; 
 
     @Test
-    void getVideoList_ReturnListOfVideos() {
+    void getVideoList_ShouldReturnAllVideos() {
         // given
         var metadataList = List.of(
-                new FileMetadata(1L, "test-video.mp4", videoUUID, MediaType.ANY_VIDEO_TYPE.type(), 1024L, LocalDateTime.now()),
-                new FileMetadata(2L, "test-video.mp4", videoUUID, MediaType.ANY_VIDEO_TYPE.type(), 1024L, LocalDateTime.now()),
-                new FileMetadata(3L, "test-video.mp4", videoUUID, MediaType.ANY_VIDEO_TYPE.type(), 1024L, LocalDateTime.now()));
+                new FileMetadata(1L, videoName, UUID.randomUUID(), "video/mp4", 1024L, LocalDateTime.now()),
+                new FileMetadata(2L, videoName, UUID.randomUUID(), "video/mp4", 1024L, LocalDateTime.now()),
+                new FileMetadata(3L, videoName, UUID.randomUUID(), "video/mp4", 1024L, LocalDateTime.now()));
 
-        doReturn(metadataList).when(fileMetadataRepository).findAll();
+        when(fileMetadataRepository.findAll()).thenReturn(metadataList);
 
         // when
         var result = videoService.getVideoList();
 
         // then
-        assertEquals(metadataList, result);
+        assertThat(result).isNotNull();
+        assertThat(result.size()).isEqualTo(3);
+        assertThat(result).isEqualTo(metadataList);
 
         verify(fileMetadataRepository, times(1)).findAll();
     }
 
-//    @Test
-//    void saveVideo_WhenSuccess_ShouldReturnUuid() {
-//        // given
-//        when(videoFile.getContentType()).thenReturn(MediaType.ANY_VIDEO_TYPE.type());
-//        when(videoFile.getSize()).thenReturn(1024L);
-//        when(fileMetadataRepository.save(any(FileMetadata.class))).thenReturn(Mono.just(fileMetadata));
-//        when(minioService.uploadFile(any(MultipartFile.class), any(FileMetadata.class))).thenReturn(Mono.empty());
-//
-//        // when
-//        Mono<String> result = videoService.saveVideo(videoFile, "test-video.mp4");
-//
-//        // then
-//        StepVerifier.create(result).expectNext(fileMetadata.getUuid().toString()).verifyComplete();
-//    }
-//
-//    @Test
-//    void deleteVideo() {
-//        when(fileMetadataRepository.deleteByUuid(videoUUID)).thenReturn(Mono.empty());
-//        when(minioService.deleteFile(videoUUID)).then Return(Mono.empty());
-//        doAnswer(invocation -> invocation.getArgument(0)).when(transactionalOperator).transactional(any(Mono.class));
-//
-//        StepVerifier.create(videoService.deleteVideo(videoUUID)).verifyComplete();
-//    }
+    @Test
+    void saveVideo_ShouldSaveMetadataAndUploadFile() {
+        // given
+        when(video.getContentType()).thenReturn("video/mp4");
+        when(video.getSize()).thenReturn(1024L);
+
+        // when
+        UUID result = videoService.saveVideo(video, videoName);
+
+        // then
+        assertThat(result).isNotNull();
+
+        verify(fileMetadataRepository, times(1)).save(any(FileMetadata.class));
+        verify(minioService, times(1)).uploadFile(any(MultipartFile.class), any(FileMetadata.class));
+    }
+
+    @Test
+    void saveVideo_WhenVideoIsNull_ShouldThrowException() {
+        // when
+        var result = assertThrows(VideoNotFoundException.class, () ->
+                videoService.saveVideo(null, videoName));
+
+        // then
+        assertThat(result.getMessage()).isEqualTo("MultipartFile is empty");
+    }
+
+    @Test
+    void saveVideo_WhenVideoIsEmpty_ShouldThrowException() {
+        // given
+        when(video.isEmpty()).thenReturn(true);
+        
+        // when
+        var result = assertThrows(VideoNotFoundException.class, () ->
+                videoService.saveVideo(video, videoName));
+        
+        // then
+        assertThat(result.getMessage()).isEqualTo("MultipartFile is empty");
+    }
+
+    @Test
+    void deleteVideo_WhenExists_ShouldDeleteVideo() {
+        // given
+        var uuid = UUID.randomUUID();
+
+        when(fileMetadataRepository.existsByUuid(uuid)).thenReturn(true);
+        doNothing().when(fileMetadataRepository).deleteByUuid(uuid);
+
+        // then
+        assertDoesNotThrow(() -> videoService.deleteVideo(uuid));
+
+        verify(fileMetadataRepository, times(1)).existsByUuid(uuid);
+        verify(fileMetadataRepository, times(1)).deleteByUuid(uuid);
+    }
+
+    @Test
+    void deleteVideo_WhenNo
 
     @Test
     void fetchChunk() {
